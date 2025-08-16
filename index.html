@@ -54,7 +54,6 @@
                 <button id="logout-button" class="btn btn-danger">Logout</button>
             </header>
             
-            <!-- NEW: Subscription Banner -->
             <div id="subscription-banner" class="bg-gray-800 p-3 rounded-lg flex justify-between items-center mb-4"></div>
 
             <div class="mb-4 border-b border-gray-700">
@@ -75,7 +74,10 @@
 
     <script>
         // --- CONFIGURATION ---
-        const API_BASE_URL = 'http://127.0.0.1:5001';
+        // DEPLOYMENT FIX: Automatically determine the API URL
+        const API_BASE_URL = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+            ? 'http://127.0.0.1:5001'
+            : window.location.origin;
 
         // --- DOM ELEMENTS ---
         const authView = document.getElementById('auth-view');
@@ -116,7 +118,7 @@
         function showAuthView() {
             authView.classList.remove('hidden');
             mainView.classList.add('hidden');
-            localStorage.clear(); // Clear all user data on logout
+            localStorage.clear();
             currentUserId = null;
         }
 
@@ -184,7 +186,7 @@
             } else if (expiryDateStr && expiryDateStr !== 'null') {
                 const expiryDate = new Date(expiryDateStr);
                 const today = new Date();
-                today.setHours(0,0,0,0); // Normalize today's date
+                today.setHours(0,0,0,0);
                 const diffTime = expiryDate.getTime() - today.getTime();
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
