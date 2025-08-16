@@ -1,7 +1,7 @@
 # api.py
 
 import os
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory # NEW IMPORT
 from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
@@ -13,12 +13,18 @@ import io
 # Load environment variables from a .env file
 load_dotenv()
 
-app = Flask(__name__)
+# NEW: Configure Flask to serve static files from the root directory
+app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app) # Enable Cross-Origin Resource Sharing
 
 # --- DATABASE CONFIGURATION ---
 DATABASE_URL = os.getenv("NEON_DATABASE_URL")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+
+# --- NEW ROUTE TO SERVE THE HTML PAGE ---
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
 
 # --- Helper Function to Connect to DB ---
 def get_db_connection():
@@ -71,7 +77,6 @@ def login():
             if user['expiry_date'] is not None and date.today() > user['expiry_date']:
                 return jsonify({"error": "Your subscription has expired"}), 403
             
-            # MODIFICATION: Send subscription info on login
             return jsonify({
                 "message": "Login successful", 
                 "userId": user['id'],
