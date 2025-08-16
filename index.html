@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StoreMe - Web Access</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .card { @apply bg-gray-800 p-4 rounded-lg shadow-md; }
+        .modal-backdrop { @apply fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50; }
+        .modal-content { @apply bg-gray-800 rounded-lg shadow-xl p-6 w-full relative; }
+        .modal-content.max-w-lg { max-width: 32rem; }
+        .modal-content.max-w-md { max-width: 28rem; }
+        .btn { @apply px-4 py-2 rounded-md font-semibold flex items-center justify-center transition-colors duration-200; }
+        .btn-sm { @apply px-3 py-1 text-sm; }
+        .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white; }
+        .btn-secondary { @apply bg-gray-600 hover:bg-gray-700 text-white; }
+        .btn-danger { @apply bg-red-600 hover:bg-red-700 text-white; }
+        .btn-special { @apply bg-teal-600 hover:bg-teal-700 text-white; }
+    </style>
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+</head>
+<body class="bg-gray-900 text-white">
+
+    <div id="app" class="container mx-auto p-4 max-w-5xl">
+
+        <!-- Login/Signup View -->
+        <div id="auth-view">
+            <div class="max-w-md mx-auto mt-20 bg-gray-800 p-8 rounded-lg shadow-lg">
+                <h2 id="auth-title" class="text-2xl font-bold text-center mb-6">Login to StoreMe</h2>
+                <form id="auth-form">
+                    <div class="mb-4">
+                        <label for="username" class="block mb-2">Username</label>
+                        <input type="text" id="username" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <div class="mb-6">
+                        <label for="password" class="block mb-2">Password</label>
+                        <input type="password" id="password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    </div>
+                    <button id="auth-button" type="submit" class="w-full btn btn-primary">Login</button>
+                </form>
+                <p id="auth-error" class="text-red-400 text-center mt-4 hidden"></p>
+                <div class="text-center mt-6">
+                    <a href="#" id="auth-switch-link" class="text-blue-400 hover:underline">Don't have an account? Sign Up</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App View (Hidden by default) -->
+        <div id="main-view" class="hidden">
+            <header class="flex justify-between items-center mb-4">
+                <h1 class="text-3xl font-bold">StoreMe</h1>
+                <button id="logout-button" class="btn btn-danger">Logout</button>
+            </header>
+            
+            <!-- NEW: Subscription Banner -->
+            <div id="subscription-banner" class="bg-gray-800 p-3 rounded-lg flex justify-between items-center mb-4"></div>
+
+            <div class="mb-4 border-b border-gray-700">
+                <nav id="tabs" class="flex space-x-4" aria-label="Tabs"></nav>
+            </div>
+            <div id="tab-content"></div>
+        </div>
+    </div>
+
+    <!-- Generic Modal -->
+    <div id="modal-backdrop" class="modal-backdrop hidden">
+        <div id="modal-content" class="modal-content">
+            <h3 id="modal-title" class="text-xl font-bold mb-4"></h3>
+            <div id="modal-body"></div>
+            <div id="modal-footer" class="mt-6 flex justify-end space-x-3"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const API_BASE_URL = 'http://127.0.0.1:5001';
+
+        // --- DOM ELEMENTS ---
+        const authView = document.getElementById('auth-view');
+        const mainView = document.getElementById('main-view');
+        const authForm = document.getElementById('auth-form');
+        const authTitle = document.getElementById('auth-title');
+        const authButton = document.getElementById('auth-button');
+        const authSwitchLink = document.getElementById('auth-switch-link');
+        const authError = document.getElementById('auth-error');
+        const logoutButton = document.getElementById('logout-button');
+        const tabsContainer = document.getElementById('tabs');
+        const tabContentContainer = document.getElementById('tab-content');
+        const subscriptionBanner = document.getElementById('subscription-banner');
+        const modal = {
+            backdrop: document.getElementById('modal-backdrop'),
+            content: document.getElementById('modal-content'),
+            title: document.getElementById('modal-title'),
+            body: document.getElementById('modal-body'),
+            footer: document.getElementById('modal-footer'),
+        };
+
+        // --- STATE ---
+        let isLoginMode = true;
+        let currentUserId = null;
+        let activeTab = 'Contacts';
+
+        // --- CORE FUNCTIONS ---
+        function checkLoginState() {
+            const userId = localStorage.getItem('storeMeUserId');
+            if (userId) {
+                currentUserId = userId;
+                showMainView();
+            } else {
+                showAuthView();
+            }
+        }
+
+        function showAuthView() {
+            authView.classList.remove('hidden');
+            mainView.classList.add('hidden');
+            localStorage.clear(); // Clear all user data on logout
+            currentUserId = null;
+        }
+
+        function showMainView() {
+            authView.classList.add('hidden');
+            mainView.classList.remove('hidden');
+            renderSubscriptionBanner();
+            renderTabs();
+            renderTabContent();
+        }
+
+        function switchAuthMode() {
+            isLoginMode = !isLoginMode;
+            authError.classList.add('hidden');
+            authForm.reset();
+            authTitle.textContent = isLoginMode ? 'Login to StoreMe' : 'Create an Account';
+            authButton.textContent = isLoginMode ? 'Login' : 'Sign Up';
+            authSwitchLink.textContent = isLoginMode ? "Don't have an account? Sign Up" : 'Already have an account? Login';
+        }
+
+        async function handleAuthSubmit(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const endpoint = isLoginMode ? '/login' : '/signup';
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    authError.textContent = data.error || 'An unknown error occurred.';
+                    authError.classList.remove('hidden');
+                    return;
+                }
+                if (isLoginMode) {
+                    currentUserId = data.userId;
+                    localStorage.setItem('storeMeUserId', currentUserId);
+                    localStorage.setItem('subscriptionType', data.subscriptionType);
+                    localStorage.setItem('expiryDate', data.expiryDate);
+                    showMainView();
+                } else {
+                    alert('Signup successful! Please log in.');
+                    switchAuthMode();
+                }
+            } catch (error) {
+                authError.textContent = 'Could not connect to the server.';
+                authError.classList.remove('hidden');
+            }
+        }
+
+        // --- TAB & CONTENT RENDERING ---
+        function renderSubscriptionBanner() {
+            const subType = localStorage.getItem('subscriptionType') || 'trial';
+            const expiryDateStr = localStorage.getItem('expiryDate');
+
+            let daysLeftText = '';
+            let bannerColorClass = '';
+
+            if (subType.toLowerCase() === 'lifetime') {
+                daysLeftText = "Lifetime Access";
+                bannerColorClass = "bg-green-500";
+            } else if (expiryDateStr && expiryDateStr !== 'null') {
+                const expiryDate = new Date(expiryDateStr);
+                const today = new Date();
+                today.setHours(0,0,0,0); // Normalize today's date
+                const diffTime = expiryDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                if (diffDays < 0) {
+                    daysLeftText = "Expired";
+                    bannerColorClass = "bg-red-500";
+                } else {
+                    daysLeftText = `${diffDays} days remaining`;
+                    bannerColorClass = "bg-blue-500";
+                }
+            } else {
+                daysLeftText = "No Expiry Date Set";
+                bannerColorClass = "bg-yellow-500";
+            }
+            
+            subscriptionBanner.innerHTML = `
+                <span class="font-bold">Subscription: ${subType.charAt(0).toUpperCase() + subType.slice(1)}</span>
+                <span class="px-2 py-1 text-sm rounded-md ${bannerColorClass}">${daysLeftText}</span>
+            `;
+        }
+        
+        function renderTabs() {
+            const tabNames = ['Contacts', 'Accounts', 'Cards', 'Files', 'Settings'];
+            tabsContainer.innerHTML = '';
+            tabNames.forEach(name => {
+                const isActive = name === activeTab;
+                const button = document.createElement('button');
+                button.textContent = name;
+                button.className = `px-3 py-2 font-medium text-sm rounded-md ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`;
+                button.onclick = () => {
+                    activeTab = name;
+                    renderTabs();
+                    renderTabContent();
+                };
+                tabsContainer.appendChild(button);
+            });
+        }
+
+        async function renderTabContent() {
+            tabContentContainer.innerHTML = `<div class="text-center p-8">Loading...</div>`;
+            const actions = {
+                'Contacts': async () => renderItems('Contacts', await fetchData('/contacts/'), renderContactCard, showContactForm),
+                'Accounts': async () => renderItems('Accounts', await fetchData('/accounts/'), renderAccountCard, showAccountForm),
+                'Cards': async () => renderItems('Cards', await fetchData('/cards/'), renderCardCard, showCardForm),
+                'Files': async () => renderFiles(await fetchData('/files/')),
+                'Settings': () => renderSettings(),
+            };
+            await actions[activeTab]();
+        }
+
+        async function fetchData(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}${options.method === 'GET' || !options.method ? currentUserId : ''}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' },
+                    ...options,
+                });
+                if (!response.ok) throw new Error( (await response.json()).error || 'Request failed');
+                return response.status !== 204 ? await response.json() : null;
+            } catch (error) {
+                console.error('Fetch error:', error);
+                alert(`Error: ${error.message}`);
+                return [];
+            }
+        }
+
+        // --- GENERIC ITEM RENDERING ---
+        function renderItems(title, items, cardRenderer, addFormRenderer) {
+            let content = `<div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">${title}</h2>
+                <button class="btn btn-primary gap-2" onclick="${addFormRenderer.name}()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    Add New
+                </button>
+            </div>`;
+            if (!items || items.length === 0) {
+                content += `<div class="text-center p-8 text-gray-500">No items found.</div>`;
+            } else {
+                content += items.map(item => cardRenderer(item)).join('');
+            }
+            tabContentContainer.innerHTML = content;
+        }
+
+        // --- CONTACTS ---
+        function renderContactCard(c) {
+            const phones = (c.phone && c.phone.length > 0) ? c.phone.join(' | ') : 'N/A';
+            return `<div class="card mb-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-xl font-bold">${c.name}</h3>
+                        <p class="text-gray-400">📞 ${phones}</p>
+                        <p class="text-gray-400">📧 ${c.email || 'N/A'}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn btn-sm btn-secondary" onclick='showContactForm(${JSON.stringify(c)})'>Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteItem('contacts', ${c.id})">Delete</button>
+                    </div>
+                </div>
+                ${c.notes ? `<p class="mt-2 text-sm bg-gray-700 p-2 rounded">Notes: ${c.notes}</p>` : ''}
+            </div>`;
+        }
+
+        // --- ACCOUNTS ---
+        function renderAccountCard(a) {
+            return `<div class="card mb-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-xl font-bold">${a.website}</h3>
+                        <p class="text-gray-400">Username: ${a.username}</p>
+                        <div class="flex items-center mt-1">
+                            <input type="password" value="${a.password}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly>
+                            <button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                         <button class="btn btn-sm btn-secondary" onclick='showAccountForm(${JSON.stringify(a)})'>Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteItem('accounts', ${a.id})">Delete</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // --- CARDS ---
+        function renderCardCard(c) {
+            const formattedNumber = c.card_number.replace(/(.{4})/g, '$1 ').trim();
+            return `<div class="card mb-4">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="text-xl font-bold">${c.card_name}</h3>
+                        <div class="flex items-center mt-1">
+                            <input type="text" value="${formattedNumber}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly>
+                            <button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="copyToClipboard('${c.card_number}')">Copy</button>
+                        </div>
+                        <div class="flex items-center mt-2">
+                            <p class="text-gray-400 mr-4">Expires: ${c.expiry_date}</p>
+                            <p class="text-gray-400 mr-1">CVV:</p>
+                            <input type="password" value="${c.cvv}" class="bg-gray-700 rounded-l-md p-1 font-mono w-16" readonly>
+                            <button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <button class="btn btn-sm btn-danger" onclick="deleteItem('cards', ${c.id})">Delete</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+        
+        // --- FILES ---
+        function renderFiles(files) {
+            let content = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Files</h2><input type="file" id="file-upload" class="hidden"><button class="btn btn-primary gap-2" onclick="document.getElementById('file-upload').click()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>Upload File</button></div>`;
+            if (!files || files.length === 0) {
+                content += `<div class="text-center p-8 text-gray-500">No files found.</div>`;
+            } else {
+                content += files.map(f => {
+                    const isImage = /\.(jpe?g|png|gif|bmp)$/i.test(f.filename);
+                    return `<div class="card mb-2 flex justify-between items-center">
+                        <p>${f.filename}</p>
+                        <div class="flex items-center gap-2">
+                            ${isImage ? `<button class="btn btn-sm btn-special" onclick="showImagePreview(${f.id}, '${f.filename}')">Preview</button>` : ''}
+                            <a href="${API_BASE_URL}/files/download/${f.id}" class="btn btn-sm btn-secondary">Download</a>
+                            <button class="btn btn-sm btn-danger" onclick="deleteItem('files', ${f.id})">Delete</button>
+                        </div>
+                    </div>`
+                }).join('');
+            }
+            tabContentContainer.innerHTML = content;
+            document.getElementById('file-upload').addEventListener('change', handleFileUpload);
+        }
+
+        // --- SETTINGS ---
+        function renderSettings() {
+            tabContentContainer.innerHTML = `
+                <h2 class="text-2xl font-bold mb-4">Settings</h2>
+                <div class="card max-w-md mx-auto">
+                    <h3 class="text-xl font-bold mb-4">Change Password</h3>
+                    <form id="change-password-form">
+                        <input type="password" id="current-password" placeholder="Current Password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mb-3" required>
+                        <input type="password" id="new-password" placeholder="New Password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mb-3" required>
+                        <button type="submit" class="w-full btn btn-primary">Save New Password</button>
+                    </form>
+                </div>
+            `;
+            document.getElementById('change-password-form').addEventListener('submit', handleChangePassword);
+        }
+
+        // --- MODALS & FORMS ---
+        function showModal(title, body, footer, size = 'lg') {
+            modal.title.innerHTML = title;
+            modal.body.innerHTML = body;
+            modal.footer.innerHTML = footer;
+            
+            modal.content.classList.remove('max-w-lg', 'max-w-md');
+            if (size === 'lg') modal.content.classList.add('max-w-lg');
+            if (size === 'md') modal.content.classList.add('max-w-md');
+
+            modal.backdrop.classList.remove('hidden');
+        }
+        function hideModal() { modal.backdrop.classList.add('hidden'); }
+
+        function showContactForm(contact = null) {
+            const isEdit = contact !== null;
+            const title = isEdit ? 'Edit Contact' : 'Add New Contact';
+            const phones = (isEdit && contact.phone) ? contact.phone : [''];
+            
+            const phoneInputs = phones.map((p, i) => `
+                <div class="flex items-center gap-2" id="phone-row-${i}">
+                    <input type="tel" name="contact-phone" placeholder="Phone" value="${p}" class="w-full bg-gray-700 p-2 rounded">
+                    ${i > 0 ? `<button type="button" class="text-red-400 hover:text-red-300" onclick="removePhoneInput(${i})">&times;</button>` : ''}
+                </div>
+            `).join('');
+
+            const body = `<div class="mx-auto max-w-md">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="hidden" id="contact-id" value="${isEdit ? contact.id : ''}">
+                    <input type="text" id="contact-name" placeholder="Name*" value="${isEdit ? contact.name : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded" required>
+                    
+                    <div id="phone-inputs-container" class="md:col-span-2 space-y-2">${phoneInputs}</div>
+                    <button type="button" class="md:col-span-2 text-blue-400 hover:underline text-sm text-left" onclick="addPhoneInput()">+ Add another phone</button>
+
+                    <input type="email" id="contact-email" placeholder="Email" value="${isEdit ? contact.email || '' : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded">
+                    <input type="text" id="contact-whatsapp" placeholder="WhatsApp" value="${isEdit ? contact.whatsapp || '' : ''}" class="bg-gray-700 p-2 rounded">
+                    <input type="text" id="contact-facebook" placeholder="Facebook" value="${isEdit ? contact.facebook || '' : ''}" class="bg-gray-700 p-2 rounded">
+                    <input type="text" id="contact-instagram" placeholder="Instagram" value="${isEdit ? contact.instagram || '' : ''}" class="bg-gray-700 p-2 rounded">
+                    <input type="text" id="contact-youtube" placeholder="YouTube" value="${isEdit ? contact.youtube || '' : ''}" class="bg-gray-700 p-2 rounded">
+                    <textarea id="contact-notes" placeholder="Notes" class="md:col-span-2 bg-gray-700 p-2 rounded">${isEdit ? contact.notes || '' : ''}</textarea>
+                </div></div>
+            `;
+            const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveContact()">Save</button>`;
+            showModal(title, body, footer, 'lg');
+        }
+
+        function addPhoneInput() {
+            const container = document.getElementById('phone-inputs-container');
+            const index = container.children.length;
+            const newRow = document.createElement('div');
+            newRow.className = 'flex items-center gap-2';
+            newRow.id = `phone-row-${index}`;
+            newRow.innerHTML = `
+                <input type="tel" name="contact-phone" placeholder="Phone" class="w-full bg-gray-700 p-2 rounded">
+                <button type="button" class="text-red-400 hover:text-red-300 font-bold text-xl" onclick="removePhoneInput(${index})">&times;</button>
+            `;
+            container.appendChild(newRow);
+        }
+
+        function removePhoneInput(index) {
+            document.getElementById(`phone-row-${index}`).remove();
+        }
+
+        function showAccountForm(account = null) {
+            const isEdit = account !== null;
+            const title = isEdit ? 'Edit Account' : 'Add New Account';
+            const body = `
+                <input type="hidden" id="account-id" value="${isEdit ? account.id : ''}">
+                <input type="text" id="account-website" placeholder="Website/App" value="${isEdit ? account.website : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required>
+                <input type="text" id="account-username" placeholder="Username" value="${isEdit ? account.username : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required>
+                <input type="text" id="account-password" placeholder="Password" value="${isEdit ? account.password : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required>
+            `;
+            const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveAccount()">Save</button>`;
+            showModal(title, body, footer, 'md');
+        }
+        
+        function showCardForm() {
+            const title = 'Add New Card';
+            const body = `<div class="mx-auto max-w-md">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="text" id="card-name" placeholder="Card Name (e.g., My Visa)" class="md:col-span-2 bg-gray-700 p-2 rounded" required>
+                    <input type="text" id="card-number" placeholder="Card Number" class="md:col-span-2 bg-gray-700 p-2 rounded" required>
+                    <input type="text" id="card-expiry" placeholder="Expiry (MM/YY)" class="bg-gray-700 p-2 rounded" required>
+                    <input type="text" id="card-cvv" placeholder="CVV" class="bg-gray-700 p-2 rounded" required>
+                </div></div>
+            `;
+            const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveCard()">Save</button>`;
+            showModal(title, body, footer, 'lg');
+        }
+        
+        function showImagePreview(fileId, filename) {
+            const title = `
+                <div class="flex justify-between items-center">
+                    <span>${filename}</span>
+                    <button onclick="hideModal()" class="text-gray-400 hover:text-white text-2xl leading-none p-1">&times;</button>
+                </div>
+            `;
+            const body = `<img src="${API_BASE_URL}/files/download/${fileId}" alt="${filename}" class="max-w-full max-h-[70vh] mx-auto">`;
+            const footer = ``; // No footer needed
+            showModal(title, body, footer, 'lg');
+        }
+
+        // --- DATA HANDLING ---
+        async function saveContact() {
+            const id = document.getElementById('contact-id').value;
+            const isEdit = id !== '';
+            const phoneInputs = document.querySelectorAll('input[name="contact-phone"]');
+            const phones = Array.from(phoneInputs).map(input => input.value).filter(p => p); // Collect all phone numbers
+
+            const contact = {
+                id: isEdit ? parseInt(id) : null,
+                userId: currentUserId,
+                name: document.getElementById('contact-name').value, 
+                phones: phones, // Use the new phones array
+                email: document.getElementById('contact-email').value, 
+                notes: document.getElementById('contact-notes').value,
+                whatsapp: document.getElementById('contact-whatsapp').value, 
+                facebook: document.getElementById('contact-facebook').value,
+                instagram: document.getElementById('contact-instagram').value, 
+                youtube: document.getElementById('contact-youtube').value,
+            };
+            if (!contact.name) { alert("Name is required."); return; }
+            await fetchData('/contacts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(contact) });
+            hideModal();
+            renderTabContent();
+        }
+
+        async function saveAccount() {
+            const id = document.getElementById('account-id').value;
+            const isEdit = id !== '';
+            const account = {
+                id: isEdit ? parseInt(id) : null,
+                userId: currentUserId,
+                website: document.getElementById('account-website').value,
+                username: document.getElementById('account-username').value,
+                password: document.getElementById('account-password').value,
+            };
+            if (!account.website || !account.username || !account.password) { alert("All fields are required."); return; }
+            await fetchData('/accounts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(account) });
+            hideModal();
+            renderTabContent();
+        }
+        
+        async function saveCard() {
+            const card = {
+                userId: currentUserId,
+                card_name: document.getElementById('card-name').value,
+                card_number: document.getElementById('card-number').value,
+                expiry_date: document.getElementById('card-expiry').value,
+                cvv: document.getElementById('card-cvv').value,
+            };
+            if (!card.card_name || !card.card_number || !card.expiry_date || !card.cvv) { alert("All fields are required."); return; }
+            await fetchData('/cards', { method: 'POST', body: JSON.stringify(card) });
+            hideModal();
+            renderTabContent();
+        }
+
+        async function deleteItem(type, id) {
+            if (confirm(`Are you sure you want to delete this ${type.slice(0, -1)}?`)) {
+                await fetchData(`/${type}/${id}`, { method: 'DELETE' });
+                renderTabContent();
+            }
+        }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const response = await fetch(`${API_BASE_URL}/files/upload/${currentUserId}`, { method: 'POST', body: formData });
+                if (!response.ok) throw new Error( (await response.json()).error || 'Upload failed');
+                renderTabContent();
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function handleChangePassword(event) {
+            event.preventDefault();
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            if (!currentPassword || !newPassword) { alert("All fields are required."); return; }
+            await fetchData(`/user/change-password/${currentUserId}`, { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+            alert("Password changed successfully!");
+            event.target.reset();
+        }
+
+        // --- UI HELPERS ---
+        function togglePassword(button) {
+            const input = button.previousElementSibling;
+            if (input.type === 'password') {
+                input.type = 'text';
+                button.textContent = 'Hide';
+            } else {
+                input.type = 'password';
+                button.textContent = 'Show';
+            }
+        }
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+        }
+
+        // --- EVENT LISTENERS ---
+        authSwitchLink.addEventListener('click', switchAuthMode);
+        authForm.addEventListener('submit', handleAuthSubmit);
+        logoutButton.addEventListener('click', showAuthView);
+        modal.backdrop.addEventListener('click', (e) => { if (e.target === modal.backdrop) hideModal(); });
+
+        // --- INITIALIZATION ---
+        checkLoginState();
+    </script>
+</body>
+</html>
