@@ -1,7 +1,7 @@
 # api.py
 
 import os
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import io
 import cloudinary
 import cloudinary.uploader
+import requests # NEW IMPORT
 
 # Load environment variables from a .env file
 load_dotenv()
@@ -30,7 +31,7 @@ cloudinary.config(
   secure = True
 )
 
-# --- NEW ROUTE TO SERVE THE HTML PAGE ---
+# --- ROUTE TO SERVE THE HTML PAGE ---
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
@@ -255,7 +256,7 @@ def add_card():
     finally:
         if conn: conn.close()
 
-# --- Files API (HEAVILY MODIFIED) ---
+# --- Files API ---
 @app.route('/files/<int:user_id>', methods=['GET'])
 def get_files(user_id):
     conn = get_db_connection()
@@ -278,16 +279,10 @@ def upload_file(user_id):
     if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
     file_to_upload = request.files['file']
     if file_to_upload.filename == '': return jsonify({"error": "No selected file"}), 400
-    
     try:
-        # Upload to Cloudinary
         upload_result = cloudinary.uploader.upload(file_to_upload, resource_type="auto")
         file_url = upload_result.get('secure_url')
-        
-        if not file_url:
-            return jsonify({"error": "Could not upload file to Cloudinary"}), 500
-
-        # Save URL to database
+        if not file_url: return jsonify({"error": "Could not upload file to Cloudinary"}), 500
         conn = get_db_connection()
         if not conn: return jsonify({"error": "Database connection failed"}), 500
         with conn.cursor() as cur:
@@ -300,7 +295,34 @@ def upload_file(user_id):
     finally:
         if 'conn' in locals() and conn: conn.close()
 
-# Note: The download route is no longer needed as the frontend will use the direct URL
+# NEW DOWNLOAD ROUTE
+@app.route('/files/download/<int:file_id>', methods=['GET'])
+def download_file(file_id):
+    conn = get_db_connection()
+    if not conn: return "Database connection failed", 500
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute("SELECT filename, file_url FROM files WHERE id = %s", (file_id,))
+            file_record = cur.fetchone()
+        
+        if file_record and file_record['file_url']:
+            # Fetch the file from Cloudinary's URL
+            response = requests.get(file_record['file_url'], stream=True)
+            if response.status_code == 200:
+                # Serve the file content back to the user
+                return send_file(
+                    io.BytesIO(response.content),
+                    download_name=file_record['filename'],
+                    as_attachment=True
+                )
+            else:
+                return "Could not fetch file from storage.", 500
+        else:
+            return "File not found.", 404
+    except Exception as e:
+        return str(e), 500
+    finally:
+        if conn: conn.close()
 
 # --- Main entry point ---
 if __name__ == '__main__':
