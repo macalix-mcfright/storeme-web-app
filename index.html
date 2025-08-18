@@ -337,11 +337,10 @@
         function renderFiles(files) {
             let content = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Files</h2><input type="file" id="file-upload" class="hidden"><button class="btn btn-primary gap-2" onclick="document.getElementById('file-upload').click()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>Upload File</button></div>`;
             if (!files || files.length === 0) {
-                content += `<div class="text-center p-8 text-gray-500">No files found.</div>`;
+                content += `<div class="text-center p-8 text-gray-500">No items found.</div>`;
             } else {
                 content += files.map(f => {
                     const isImage = /\.(jpe?g|png|gif|bmp)$/i.test(f.filename);
-                    // DOWNLOAD FIX: Use a button that calls a JavaScript function
                     return `<div class="card mb-2 flex justify-between items-center">
                         <p>${f.filename}</p>
                         <div class="flex items-center gap-2">
