@@ -1,7 +1,7 @@
 # api.py
 
 import os
-from flask import Flask, request, jsonify, send_file, send_from_directory # NEW IMPORT
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
@@ -9,17 +9,26 @@ import bcrypt
 from datetime import date, timedelta
 from dotenv import load_dotenv
 import io
+import cloudinary
+import cloudinary.uploader
 
 # Load environment variables from a .env file
 load_dotenv()
 
-# NEW: Configure Flask to serve static files from the root directory
 app = Flask(__name__, static_folder='.', static_url_path='')
-CORS(app) # Enable Cross-Origin Resource Sharing
+CORS(app)
 
 # --- DATABASE CONFIGURATION ---
 DATABASE_URL = os.getenv("NEON_DATABASE_URL")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
+
+# --- CLOUDINARY CONFIGURATION ---
+cloudinary.config( 
+  cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"), 
+  api_key = os.getenv("CLOUDINARY_API_KEY"), 
+  api_secret = os.getenv("CLOUDINARY_API_SECRET"),
+  secure = True
+)
 
 # --- NEW ROUTE TO SERVE THE HTML PAGE ---
 @app.route('/')
@@ -35,7 +44,7 @@ def get_db_connection():
         print(f"Database connection error: {e}")
         return None
 
-# --- User Authentication Routes ---
+# --- User Authentication Routes (Unchanged) ---
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
@@ -133,7 +142,7 @@ def delete_item(table, item_id):
     finally:
         if conn: conn.close()
 
-# --- Contacts API ---
+# --- Contacts API (Unchanged) ---
 @app.route('/contacts/<int:user_id>', methods=['GET'])
 def get_contacts(user_id):
     conn = get_db_connection()
@@ -173,7 +182,7 @@ def manage_contact():
     finally:
         if conn: conn.close()
 
-# --- Accounts API ---
+# --- Accounts API (Unchanged) ---
 @app.route('/accounts/<int:user_id>', methods=['GET'])
 def get_accounts(user_id):
     conn = get_db_connection()
@@ -211,7 +220,7 @@ def manage_account():
     finally:
         if conn: conn.close()
 
-# --- Cards API ---
+# --- Cards API (Unchanged) ---
 @app.route('/cards/<int:user_id>', methods=['GET'])
 def get_cards(user_id):
     conn = get_db_connection()
@@ -246,14 +255,14 @@ def add_card():
     finally:
         if conn: conn.close()
 
-# --- Files API ---
+# --- Files API (HEAVILY MODIFIED) ---
 @app.route('/files/<int:user_id>', methods=['GET'])
 def get_files(user_id):
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute("SELECT id, filename FROM files WHERE user_id = %s AND is_deleted = FALSE ORDER BY filename", (user_id,))
+            cur.execute("SELECT id, filename, file_url FROM files WHERE user_id = %s AND is_deleted = FALSE ORDER BY filename", (user_id,))
             items = [dict(row) for row in cur.fetchall()]
         return jsonify(items), 200
     except Exception as e:
@@ -267,37 +276,31 @@ def delete_file(item_id): return delete_item('files', item_id)
 @app.route('/files/upload/<int:user_id>', methods=['POST'])
 def upload_file(user_id):
     if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '': return jsonify({"error": "No selected file"}), 400
-    conn = get_db_connection()
-    if not conn: return jsonify({"error": "Database connection failed"}), 500
+    file_to_upload = request.files['file']
+    if file_to_upload.filename == '': return jsonify({"error": "No selected file"}), 400
+    
     try:
+        # Upload to Cloudinary
+        upload_result = cloudinary.uploader.upload(file_to_upload, resource_type="auto")
+        file_url = upload_result.get('secure_url')
+        
+        if not file_url:
+            return jsonify({"error": "Could not upload file to Cloudinary"}), 500
+
+        # Save URL to database
+        conn = get_db_connection()
+        if not conn: return jsonify({"error": "Database connection failed"}), 500
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO files (user_id, filename, file_data) VALUES (%s, %s, %s)", (user_id, file.filename, file.read()))
+            cur.execute("INSERT INTO files (user_id, filename, file_url) VALUES (%s, %s, %s)", (user_id, file_to_upload.filename, file_url))
         conn.commit()
         return jsonify({"message": "File uploaded successfully"}), 201
     except Exception as e:
-        conn.rollback()
+        if 'conn' in locals() and conn: conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        if conn: conn.close()
+        if 'conn' in locals() and conn: conn.close()
 
-@app.route('/files/download/<int:file_id>', methods=['GET'])
-def download_file(file_id):
-    conn = get_db_connection()
-    if not conn: return jsonify({"error": "Database connection failed"}), 500
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute("SELECT filename, file_data FROM files WHERE id = %s", (file_id,))
-            file_data = cur.fetchone()
-        if file_data:
-            return send_file(io.BytesIO(file_data['file_data']), download_name=file_data['filename'], as_attachment=True)
-        else:
-            return jsonify({"error": "File not found"}), 404
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        if conn: conn.close()
+# Note: The download route is no longer needed as the frontend will use the direct URL
 
 # --- Main entry point ---
 if __name__ == '__main__':
