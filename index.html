@@ -24,7 +24,7 @@
 <body class="bg-gray-900 text-white">
 
     <div id="app" class="container mx-auto p-4 max-w-5xl">
-
+        <!-- All HTML content is the same, only the script part changes -->
         <!-- Login/Signup View -->
         <div id="auth-view">
             <div class="max-w-md mx-auto mt-20 bg-gray-800 p-8 rounded-lg shadow-lg">
@@ -74,7 +74,6 @@
 
     <script>
         // --- CONFIGURATION ---
-        // DEPLOYMENT FIX: Automatically determine the API URL
         const API_BASE_URL = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
             ? 'http://127.0.0.1:5001'
             : window.location.origin;
@@ -342,11 +341,12 @@
             } else {
                 content += files.map(f => {
                     const isImage = /\.(jpe?g|png|gif|bmp)$/i.test(f.filename);
+                    // DOWNLOAD FIX: Use a button that calls a JavaScript function
                     return `<div class="card mb-2 flex justify-between items-center">
                         <p>${f.filename}</p>
                         <div class="flex items-center gap-2">
-                            ${isImage ? `<button class="btn btn-sm btn-special" onclick="showImagePreview(${f.id}, '${f.filename}')">Preview</button>` : ''}
-                            <a href="${API_BASE_URL}/files/download/${f.id}" class="btn btn-sm btn-secondary">Download</a>
+                            ${isImage ? `<button class="btn btn-sm btn-special" onclick="showImagePreview('${f.file_url}')">Preview</button>` : ''}
+                            <button class="btn btn-sm btn-secondary" onclick="downloadFile(${f.id}, '${f.filename}')">Download</button>
                             <button class="btn btn-sm btn-danger" onclick="deleteItem('files', ${f.id})">Delete</button>
                         </div>
                     </div>`
@@ -462,14 +462,14 @@
             showModal(title, body, footer, 'lg');
         }
         
-        function showImagePreview(fileId, filename) {
+        function showImagePreview(fileUrl, filename) {
             const title = `
                 <div class="flex justify-between items-center">
                     <span>${filename}</span>
                     <button onclick="hideModal()" class="text-gray-400 hover:text-white text-2xl leading-none p-1">&times;</button>
                 </div>
             `;
-            const body = `<img src="${API_BASE_URL}/files/download/${fileId}" alt="${filename}" class="max-w-full max-h-[70vh] mx-auto">`;
+            const body = `<img src="${fileUrl}" alt="${filename}" class="max-w-full max-h-[70vh] mx-auto">`;
             const footer = ``; // No footer needed
             showModal(title, body, footer, 'lg');
         }
@@ -479,13 +479,13 @@
             const id = document.getElementById('contact-id').value;
             const isEdit = id !== '';
             const phoneInputs = document.querySelectorAll('input[name="contact-phone"]');
-            const phones = Array.from(phoneInputs).map(input => input.value).filter(p => p); // Collect all phone numbers
+            const phones = Array.from(phoneInputs).map(input => input.value).filter(p => p);
 
             const contact = {
                 id: isEdit ? parseInt(id) : null,
                 userId: currentUserId,
                 name: document.getElementById('contact-name').value, 
-                phones: phones, // Use the new phones array
+                phones: phones,
                 email: document.getElementById('contact-email').value, 
                 notes: document.getElementById('contact-notes').value,
                 whatsapp: document.getElementById('contact-whatsapp').value, 
@@ -573,6 +573,26 @@
         }
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
+        }
+
+        // NEW DOWNLOAD FUNCTION
+        async function downloadFile(fileId, filename) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/files/download/${fileId}`);
+                if (!response.ok) throw new Error('Download failed');
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
         }
 
         // --- EVENT LISTENERS ---
