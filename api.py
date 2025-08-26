@@ -1,4 +1,4 @@
-# api.py (Corrected Version)
+# api.py (Final Corrected Version)
 
 import os
 # CORRECTED: Added 'send_from_directory' to the imports
@@ -17,7 +17,8 @@ import requests
 # Load environment variables from a .env file
 load_dotenv()
 
-app = Flask(__name__)
+# CORRECTED: This line now tells Flask where to find index.html
+app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
 # --- CONFIGURATIONS ---
@@ -32,12 +33,11 @@ cloudinary.config(
 )
 
 # --- ROUTE TO SERVE THE HTML FRONTEND ---
-# ADDED: This is the missing piece of code.
-# It tells the server to send the index.html file when someone visits the main URL.
+# This route now correctly serves the index.html from the root folder.
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
-    if path != "" and os.path.exists(app.static_folder + '/' + path):
+    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
     else:
         return send_from_directory(app.static_folder, 'index.html')
@@ -53,7 +53,7 @@ def get_db_connection():
         return None
 
 # --- AUTHENTICATION API ---
-@app.route('/signup', methods=['POST'])
+@app.route('/api/signup', methods=['POST'])
 def signup():
     data = request.get_json()
     username = data.get('username')
@@ -78,7 +78,7 @@ def signup():
     finally:
         if conn: conn.close()
 
-@app.route('/login', methods=['POST'])
+@app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
     username = data.get('username')
@@ -106,7 +106,7 @@ def login():
     finally:
         if conn: conn.close()
 
-@app.route('/user/change-password/<int:user_id>', methods=['POST'])
+@app.route('/api/user/change-password/<int:user_id>', methods=['POST'])
 def change_password(user_id):
     data = request.get_json()
     current_pass = data.get('currentPassword')
@@ -154,7 +154,7 @@ def delete_item(table, item_id):
         if conn: conn.close()
 
 # --- CONTACTS API ---
-@app.route('/contacts/<int:user_id>', methods=['GET'])
+@app.route('/api/contacts/<int:user_id>', methods=['GET'])
 def get_contacts(user_id):
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
@@ -168,10 +168,10 @@ def get_contacts(user_id):
     finally:
         if conn: conn.close()
 
-@app.route('/contacts/<int:item_id>', methods=['DELETE'])
+@app.route('/api/contacts/<int:item_id>', methods=['DELETE'])
 def delete_contact(item_id): return delete_item('contacts', item_id)
 
-@app.route('/contacts', methods=['POST', 'PUT'])
+@app.route('/api/contacts', methods=['POST', 'PUT'])
 def manage_contact():
     data = request.get_json()
     phones = data.get('phones', [])
@@ -193,7 +193,7 @@ def manage_contact():
         if conn: conn.close()
 
 # --- ACCOUNTS API ---
-@app.route('/accounts/<int:user_id>', methods=['GET'])
+@app.route('/api/accounts/<int:user_id>', methods=['GET'])
 def get_accounts(user_id):
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
@@ -208,10 +208,10 @@ def get_accounts(user_id):
     finally:
         if conn: conn.close()
 
-@app.route('/accounts/<int:item_id>', methods=['DELETE'])
+@app.route('/api/accounts/<int:item_id>', methods=['DELETE'])
 def delete_account(item_id): return delete_item('accounts', item_id)
 
-@app.route('/accounts', methods=['POST', 'PUT'])
+@app.route('/api/accounts', methods=['POST', 'PUT'])
 def manage_account():
     data = request.get_json()
     conn = get_db_connection()
@@ -231,7 +231,7 @@ def manage_account():
         if conn: conn.close()
 
 # --- CARDS API ---
-@app.route('/cards/<int:user_id>', methods=['GET'])
+@app.route('/api/cards/<int:user_id>', methods=['GET'])
 def get_cards(user_id):
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
@@ -246,10 +246,10 @@ def get_cards(user_id):
     finally:
         if conn: conn.close()
 
-@app.route('/cards/<int:item_id>', methods=['DELETE'])
+@app.route('/api/cards/<int:item_id>', methods=['DELETE'])
 def delete_card(item_id): return delete_item('cards', item_id)
 
-@app.route('/cards', methods=['POST', 'PUT'])
+@app.route('/api/cards', methods=['POST', 'PUT'])
 def manage_card():
     data = request.get_json()
     conn = get_db_connection()
@@ -269,7 +269,7 @@ def manage_card():
         if conn: conn.close()
 
 # --- FILES API ---
-@app.route('/files/<int:user_id>', methods=['GET'])
+@app.route('/api/files/<int:user_id>', methods=['GET'])
 def get_files(user_id):
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
@@ -283,10 +283,10 @@ def get_files(user_id):
     finally:
         if conn: conn.close()
 
-@app.route('/files/<int:item_id>', methods=['DELETE'])
+@app.route('/api/files/<int:item_id>', methods=['DELETE'])
 def delete_file(item_id): return delete_item('files', item_id)
 
-@app.route('/files/upload/<int:user_id>', methods=['POST'])
+@app.route('/api/files/upload/<int:user_id>', methods=['POST'])
 def upload_file(user_id):
     if 'file' not in request.files: return jsonify({"error": "No file part"}), 400
     file_to_upload = request.files['file']
@@ -307,7 +307,7 @@ def upload_file(user_id):
     finally:
         if 'conn' in locals() and conn: conn.close()
 
-@app.route('/files/download/<int:file_id>', methods=['GET'])
+@app.route('/api/files/download/<int:file_id>', methods=['GET'])
 def download_file_route(file_id):
     conn = get_db_connection()
     if not conn: return "Database connection failed", 500
@@ -327,7 +327,7 @@ def download_file_route(file_id):
         if conn: conn.close()
 
 # --- NOTES API ---
-@app.route('/notes/<int:user_id>', methods=['GET'])
+@app.route('/api/notes/<int:user_id>', methods=['GET'])
 def get_notes(user_id):
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
@@ -341,11 +341,11 @@ def get_notes(user_id):
     finally:
         if conn: conn.close()
 
-@app.route('/notes/<int:item_id>', methods=['DELETE'])
+@app.route('/api/notes/<int:item_id>', methods=['DELETE'])
 def delete_note(item_id):
     return delete_item('notes', item_id)
 
-@app.route('/notes', methods=['POST', 'PUT'])
+@app.route('/api/notes', methods=['POST', 'PUT'])
 def manage_note():
     data = request.get_json()
     conn = get_db_connection()
@@ -365,5 +365,6 @@ def manage_note():
         if conn: conn.close()
 
 # --- Main entry point (This should only appear once, at the very end) ---
+# Note: Vercel doesn't use this, but it's essential for local testing.
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
