@@ -1,6 +1,7 @@
-# api.py
+# api.py (Corrected Version)
 
 import os
+# CORRECTED: Added 'send_from_directory' to the imports
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 import psycopg2
@@ -11,32 +12,38 @@ from dotenv import load_dotenv
 import io
 import cloudinary
 import cloudinary.uploader
-import requests # NEW IMPORT
+import requests
 
 # Load environment variables from a .env file
 load_dotenv()
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__)
 CORS(app)
 
-# --- DATABASE CONFIGURATION ---
+# --- CONFIGURATIONS ---
 DATABASE_URL = os.getenv("NEON_DATABASE_URL")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
-# --- CLOUDINARY CONFIGURATION ---
-cloudinary.config( 
-  cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"), 
-  api_key = os.getenv("CLOUDINARY_API_KEY"), 
+cloudinary.config(
+  cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME"),
+  api_key = os.getenv("CLOUDINARY_API_KEY"),
   api_secret = os.getenv("CLOUDINARY_API_SECRET"),
   secure = True
 )
 
-# --- ROUTE TO SERVE THE HTML PAGE ---
-@app.route('/')
-def serve_index():
-    return send_from_directory('.', 'index.html')
+# --- ROUTE TO SERVE THE HTML FRONTEND ---
+# ADDED: This is the missing piece of code.
+# It tells the server to send the index.html file when someone visits the main URL.
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
 
-# --- Helper Function to Connect to DB ---
+
+# --- HELPER FUNCTIONS ---
 def get_db_connection():
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -45,7 +52,7 @@ def get_db_connection():
         print(f"Database connection error: {e}")
         return None
 
-# --- User Authentication Routes (Unchanged) ---
+# --- AUTHENTICATION API ---
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.get_json()
@@ -86,9 +93,8 @@ def login():
         if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
             if user['expiry_date'] is not None and date.today() > user['expiry_date']:
                 return jsonify({"error": "Your subscription has expired"}), 403
-            
             return jsonify({
-                "message": "Login successful", 
+                "message": "Login successful",
                 "userId": user['id'],
                 "subscriptionType": user['subscription_type'],
                 "expiryDate": user['expiry_date'].isoformat() if user['expiry_date'] else None
@@ -125,16 +131,20 @@ def change_password(user_id):
     finally:
         if conn: conn.close()
 
-# --- Generic DELETE Route ---
+# --- GENERIC DELETE ROUTE ---
 def delete_item(table, item_id):
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
     try:
         with conn.cursor() as cur:
+            safe_tables = {"contacts": "contacts", "accounts": "accounts", "cards": "cards", "files": "files", "notes": "notes"}
+            if table not in safe_tables:
+                return jsonify({"error": "Invalid table specified"}), 400
+            
             if table == "files":
                 cur.execute(f"UPDATE files SET is_deleted = TRUE WHERE id = %s", (item_id,))
             else:
-                cur.execute(f"DELETE FROM {table} WHERE id = %s", (item_id,))
+                cur.execute(f"DELETE FROM {safe_tables[table]} WHERE id = %s", (item_id,))
         conn.commit()
         return jsonify({"message": f"Item from {table} deleted successfully"}), 200
     except Exception as e:
@@ -143,7 +153,7 @@ def delete_item(table, item_id):
     finally:
         if conn: conn.close()
 
-# --- Contacts API (Unchanged) ---
+# --- CONTACTS API ---
 @app.route('/contacts/<int:user_id>', methods=['GET'])
 def get_contacts(user_id):
     conn = get_db_connection()
@@ -165,14 +175,13 @@ def delete_contact(item_id): return delete_item('contacts', item_id)
 def manage_contact():
     data = request.get_json()
     phones = data.get('phones', [])
-    phones = [p for p in phones if p] 
-
+    phones = [p for p in phones if p]
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
     try:
         with conn.cursor() as cur:
             if request.method == 'POST':
-                cur.execute("INSERT INTO contacts (user_id, name, phone, email, notes, whatsapp, facebook, instagram, youtube) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id", (data['userId'], data['name'], phones, data['email'], data['notes'], data['whatsapp'], data['facebook'], data['instagram'], data['youtube']))
+                cur.execute("INSERT INTO contacts (user_id, name, phone, email, notes, whatsapp, facebook, instagram, youtube) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", (data['userId'], data['name'], phones, data['email'], data['notes'], data['whatsapp'], data['facebook'], data['instagram'], data['youtube']))
             elif request.method == 'PUT':
                 cur.execute("UPDATE contacts SET name=%s, phone=%s, email=%s, notes=%s, whatsapp=%s, facebook=%s, instagram=%s, youtube=%s WHERE id=%s", (data['name'], phones, data['email'], data['notes'], data['whatsapp'], data['facebook'], data['instagram'], data['youtube'], data['id']))
         conn.commit()
@@ -183,7 +192,7 @@ def manage_contact():
     finally:
         if conn: conn.close()
 
-# --- Accounts API (Unchanged) ---
+# --- ACCOUNTS API ---
 @app.route('/accounts/<int:user_id>', methods=['GET'])
 def get_accounts(user_id):
     conn = get_db_connection()
@@ -221,7 +230,7 @@ def manage_account():
     finally:
         if conn: conn.close()
 
-# --- Cards API (Unchanged) ---
+# --- CARDS API ---
 @app.route('/cards/<int:user_id>', methods=['GET'])
 def get_cards(user_id):
     conn = get_db_connection()
@@ -240,23 +249,26 @@ def get_cards(user_id):
 @app.route('/cards/<int:item_id>', methods=['DELETE'])
 def delete_card(item_id): return delete_item('cards', item_id)
 
-@app.route('/cards', methods=['POST'])
-def add_card():
+@app.route('/cards', methods=['POST', 'PUT'])
+def manage_card():
     data = request.get_json()
     conn = get_db_connection()
     if not conn: return jsonify({"error": "Database connection failed"}), 500
     try:
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO cards (user_id, card_name, encrypted_card_number, expiry_date, encrypted_cvv) VALUES (%s, %s, pgp_sym_encrypt(%s, %s), %s, pgp_sym_encrypt(%s, %s))", (data['userId'], data['card_name'], data['card_number'], ENCRYPTION_KEY, data['expiry_date'], data['cvv'], ENCRYPTION_KEY))
+            if request.method == 'POST':
+                cur.execute("INSERT INTO cards (user_id, card_name, encrypted_card_number, expiry_date, encrypted_cvv) VALUES (%s, %s, pgp_sym_encrypt(%s, %s), %s, pgp_sym_encrypt(%s, %s))", (data['userId'], data['card_name'], data['card_number'], ENCRYPTION_KEY, data['expiry_date'], data['cvv'], ENCRYPTION_KEY))
+            elif request.method == 'PUT':
+                cur.execute("UPDATE cards SET card_name=%s, encrypted_card_number=pgp_sym_encrypt(%s, %s), expiry_date=%s, encrypted_cvv=pgp_sym_encrypt(%s, %s) WHERE id=%s", (data['card_name'], data['card_number'], ENCRYPTION_KEY, data['expiry_date'], data['cvv'], ENCRYPTION_KEY, data['id']))
         conn.commit()
-        return jsonify({"message": "Card added successfully"}), 201
+        return jsonify({"message": "Card saved successfully"}), 201
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
 
-# --- Files API ---
+# --- FILES API ---
 @app.route('/files/<int:user_id>', methods=['GET'])
 def get_files(user_id):
     conn = get_db_connection()
@@ -295,35 +307,63 @@ def upload_file(user_id):
     finally:
         if 'conn' in locals() and conn: conn.close()
 
-# NEW DOWNLOAD ROUTE
 @app.route('/files/download/<int:file_id>', methods=['GET'])
-def download_file(file_id):
+def download_file_route(file_id):
     conn = get_db_connection()
     if not conn: return "Database connection failed", 500
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute("SELECT filename, file_url FROM files WHERE id = %s", (file_id,))
             file_record = cur.fetchone()
-        
         if file_record and file_record['file_url']:
-            # Fetch the file from Cloudinary's URL
             response = requests.get(file_record['file_url'], stream=True)
             if response.status_code == 200:
-                # Serve the file content back to the user
-                return send_file(
-                    io.BytesIO(response.content),
-                    download_name=file_record['filename'],
-                    as_attachment=True
-                )
-            else:
-                return "Could not fetch file from storage.", 500
-        else:
-            return "File not found.", 404
+                return send_file(io.BytesIO(response.content), download_name=file_record['filename'], as_attachment=True)
+            else: return "Could not fetch file from storage.", 500
+        else: return "File not found.", 404
     except Exception as e:
         return str(e), 500
     finally:
         if conn: conn.close()
 
-# --- Main entry point ---
+# --- NOTES API ---
+@app.route('/notes/<int:user_id>', methods=['GET'])
+def get_notes(user_id):
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "Database connection failed"}), 500
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute("SELECT id, title, content FROM notes WHERE user_id = %s ORDER BY title", (user_id,))
+            items = [dict(row) for row in cur.fetchall()]
+        return jsonify(items), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+@app.route('/notes/<int:item_id>', methods=['DELETE'])
+def delete_note(item_id):
+    return delete_item('notes', item_id)
+
+@app.route('/notes', methods=['POST', 'PUT'])
+def manage_note():
+    data = request.get_json()
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "Database connection failed"}), 500
+    try:
+        with conn.cursor() as cur:
+            if request.method == 'POST':
+                cur.execute("INSERT INTO notes (user_id, title, content) VALUES (%s, %s, %s)", (data['userId'], data['title'], data['content']))
+            elif request.method == 'PUT':
+                cur.execute("UPDATE notes SET title=%s, content=%s WHERE id=%s", (data['title'], data['content'], data['id']))
+        conn.commit()
+        return jsonify({"message": "Note saved successfully"}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn: conn.close()
+
+# --- Main entry point (This should only appear once, at the very end) ---
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
