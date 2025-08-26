@@ -74,10 +74,9 @@
 
     <script>
         // --- CONFIGURATION ---
-        const isLocal = window.location.protocol === 'file:' || window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-        const API_BASE_URL = isLocal 
-            ? 'http://127.0.0.1:5001' 
-            : 'https://your-production-url.com'; // IMPORTANT: Replace with your actual deployment URL later
+        const API_BASE_URL = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.protocol === 'file:'
+            ? 'http://127.0.0.1:5001'
+            : ''; // For production, requests are relative to the domain, so this is empty.
 
         // --- DOM ELEMENTS ---
         const authView = document.getElementById('auth-view');
@@ -144,7 +143,7 @@
             event.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const endpoint = isLoginMode ? '/login' : '/signup';
+            const endpoint = isLoginMode ? '/api/login' : '/api/signup';
             try {
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, {
                     method: 'POST',
@@ -229,11 +228,11 @@
         async function renderTabContent() {
             tabContentContainer.innerHTML = `<div class="text-center p-8">Loading...</div>`;
             const actions = {
-                'Contacts': async () => renderItems('Contacts', await fetchData('/contacts/'), renderContactCard, showContactForm),
-                'Accounts': async () => renderItems('Accounts', await fetchData('/accounts/'), renderAccountCard, showAccountForm),
-                'Cards': async () => renderItems('Cards', await fetchData('/cards/'), renderCardCard, showCardForm),
-                'Files': async () => renderFiles(await fetchData('/files/')),
-                'Notes': async () => renderItems('Notes', await fetchData('/notes/'), renderNoteCard, showNoteForm),
+                'Contacts': async () => renderItems('Contacts', await fetchData('/api/contacts/'), renderContactCard, showContactForm),
+                'Accounts': async () => renderItems('Accounts', await fetchData('/api/accounts/'), renderAccountCard, showAccountForm),
+                'Cards': async () => renderItems('Cards', await fetchData('/api/cards/'), renderCardCard, showCardForm),
+                'Files': async () => renderFiles(await fetchData('/api/files/')),
+                'Notes': async () => renderItems('Notes', await fetchData('/api/notes/'), renderNoteCard, showNoteForm),
                 'Settings': () => renderSettings(),
             };
             await actions[activeTab]();
@@ -241,7 +240,6 @@
 
         async function fetchData(endpoint, options = {}) {
             try {
-                // Append userId to GET requests automatically
                 const url = (options.method === 'GET' || !options.method) ? `${API_BASE_URL}${endpoint}${currentUserId}` : `${API_BASE_URL}${endpoint}`;
                 const response = await fetch(url, {
                     method: 'GET',
@@ -271,24 +269,23 @@
         // --- RENDERERS FOR EACH CARD TYPE ---
         function renderContactCard(c) {
             const phones = (c.phone && c.phone.length > 0) ? c.phone.join(' | ') : 'N/A';
-            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${c.name}</h3><p class="text-gray-400">📞 ${phones}</p><p class="text-gray-400">📧 ${c.email || 'N/A'}</p></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showContactForm(${JSON.stringify(c)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('contacts', ${c.id})">Delete</button></div></div>${c.notes ? `<p class="mt-2 text-sm bg-gray-700 p-2 rounded">Notes: ${c.notes}</p>` : ''}</div>`;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${c.name}</h3><p class="text-gray-400">📞 ${phones}</p><p class="text-gray-400">📧 ${c.email || 'N/A'}</p></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showContactForm(${JSON.stringify(c)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('/api/contacts', ${c.id})">Delete</button></div></div>${c.notes ? `<p class="mt-2 text-sm bg-gray-700 p-2 rounded">Notes: ${c.notes}</p>` : ''}</div>`;
         }
 
         function renderNoteCard(n) {
             const snippet = n.content.length > 100 ? n.content.substring(0, 100) + '...' : n.content;
-            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${n.title}</h3><p class="text-gray-400 mt-2">${snippet.replace(/\n/g, '<br>')}</p></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showNoteForm(${JSON.stringify(n)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('notes', ${n.id})">Delete</button></div></div></div>`;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${n.title}</h3><p class="text-gray-400 mt-2">${snippet.replace(/\n/g, '<br>')}</p></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showNoteForm(${JSON.stringify(n)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('/api/notes', ${n.id})">Delete</button></div></div></div>`;
         }
 
         function renderAccountCard(a) {
-            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${a.website}</h3><p class="text-gray-400">Username: ${a.username}</p><div class="flex items-center mt-1"><input type="password" value="${a.password}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button></div></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showAccountForm(${JSON.stringify(a)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('accounts', ${a.id})">Delete</button></div></div></div>`;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${a.website}</h3><p class="text-gray-400">Username: ${a.username}</p><div class="flex items-center mt-1"><input type="password" value="${a.password}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button></div></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showAccountForm(${JSON.stringify(a)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('/api/accounts', ${a.id})">Delete</button></div></div></div>`;
         }
 
         function renderCardCard(c) {
             const formattedNumber = c.card_number.replace(/(.{4})/g, '$1 ').trim();
-            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${c.card_name}</h3><div class="flex items-center mt-1"><input type="text" value="${formattedNumber}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="copyToClipboard('${c.card_number}')">Copy</button></div><div class="flex items-center mt-2"><p class="text-gray-400 mr-4">Expires: ${c.expiry_date}</p><p class="text-gray-400 mr-1">CVV:</p><input type="password" value="${c.cvv}" class="bg-gray-700 rounded-l-md p-1 font-mono w-16" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button></div></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showCardForm(${JSON.stringify(c)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('cards', ${c.id})">Delete</button></div></div></div>`;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${c.card_name}</h3><div class="flex items-center mt-1"><input type="text" value="${formattedNumber}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="copyToClipboard('${c.card_number}')">Copy</button></div><div class="flex items-center mt-2"><p class="text-gray-400 mr-4">Expires: ${c.expiry_date}</p><p class="text-gray-400 mr-1">CVV:</p><input type="password" value="${c.cvv}" class="bg-gray-700 rounded-l-md p-1 font-mono w-16" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button></div></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showCardForm(${JSON.stringify(c)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('/api/cards', ${c.id})">Delete</button></div></div></div>`;
         }
         
-        // --- FILES & SETTINGS RENDERERS ---
         function renderFiles(files) {
             let content = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Files</h2><input type="file" id="file-upload" class="hidden" onchange="handleFileUpload(event)"><button class="btn btn-primary gap-2" onclick="document.getElementById('file-upload').click()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>Upload File</button></div>`;
             if (!files || files.length === 0) {
@@ -296,7 +293,7 @@
             } else {
                 content += files.map(f => {
                     const isImage = /\.(jpe?g|png|gif|bmp|webp)$/i.test(f.filename);
-                    return `<div class="card mb-2 flex justify-between items-center"><p>${f.filename}</p><div class="flex items-center gap-2">${isImage ? `<button class="btn btn-sm btn-special" onclick="showImagePreview('${f.file_url}', '${f.filename}')">Preview</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="downloadFile('${f.file_url}', '${f.filename}')">Download</button><button class="btn btn-sm btn-danger" onclick="deleteItem('files', ${f.id})">Delete</button></div></div>`
+                    return `<div class="card mb-2 flex justify-between items-center"><p>${f.filename}</p><div class="flex items-center gap-2">${isImage ? `<button class="btn btn-sm btn-special" onclick="showImagePreview('${f.file_url}', '${f.filename}')">Preview</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="downloadFile('${f.file_url}', '${f.filename}')">Download</button><button class="btn btn-sm btn-danger" onclick="deleteItem('/api/files', ${f.id})">Delete</button></div></div>`
                 }).join('');
             }
             tabContentContainer.innerHTML = content;
@@ -378,7 +375,7 @@
             const phones = Array.from(phoneInputs).map(input => input.value).filter(p => p);
             const contact = { id: isEdit ? parseInt(id) : null, userId: currentUserId, name: document.getElementById('contact-name').value, phones: phones, email: document.getElementById('contact-email').value, notes: document.getElementById('contact-notes').value, whatsapp: document.getElementById('contact-whatsapp').value, facebook: document.getElementById('contact-facebook').value, instagram: document.getElementById('contact-instagram').value, youtube: document.getElementById('contact-youtube').value };
             if (!contact.name) { alert("Name is required."); return; }
-            await fetchData('/contacts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(contact) });
+            await fetchData('/api/contacts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(contact) });
             hideModal();
             renderTabContent();
         }
@@ -388,7 +385,7 @@
             const isEdit = id !== '';
             const account = { id: isEdit ? parseInt(id) : null, userId: currentUserId, website: document.getElementById('account-website').value, username: document.getElementById('account-username').value, password: document.getElementById('account-password').value };
             if (!account.website || !account.username || !account.password) { alert("All fields are required."); return; }
-            await fetchData('/accounts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(account) });
+            await fetchData('/api/accounts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(account) });
             hideModal();
             renderTabContent();
         }
@@ -398,7 +395,7 @@
             const isEdit = id !== '';
             const card = { id: isEdit ? parseInt(id) : null, userId: currentUserId, card_name: document.getElementById('card-name').value, card_number: document.getElementById('card-number').value, expiry_date: document.getElementById('card-expiry').value, cvv: document.getElementById('card-cvv').value };
             if (!card.card_name || !card.card_number || !card.expiry_date || !card.cvv) { alert("All fields are required."); return; }
-            await fetchData('/cards', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(card) });
+            await fetchData('/api/cards', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(card) });
             hideModal();
             renderTabContent();
         }
@@ -408,14 +405,14 @@
             const isEdit = id !== '';
             const note = { id: isEdit ? parseInt(id) : null, userId: currentUserId, title: document.getElementById('note-title').value, content: document.getElementById('note-content').value };
             if (!note.title) { alert("Title is required."); return; }
-            await fetchData('/notes', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(note) });
+            await fetchData('/api/notes', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(note) });
             hideModal();
             renderTabContent();
         }
 
-        async function deleteItem(type, id) {
-            if (confirm(`Are you sure you want to delete this ${type.slice(0, -1)}?`)) {
-                await fetchData(`/${type}/${id}`, { method: 'DELETE' });
+        async function deleteItem(endpoint, id) {
+            if (confirm(`Are you sure you want to delete this item?`)) {
+                await fetchData(`${endpoint}/${id}`, { method: 'DELETE' });
                 renderTabContent();
             }
         }
@@ -426,7 +423,7 @@
             const formData = new FormData();
             formData.append('file', file);
             try {
-                const response = await fetch(`${API_BASE_URL}/files/upload/${currentUserId}`, { method: 'POST', body: formData });
+                const response = await fetch(`${API_BASE_URL}/api/files/upload/${currentUserId}`, { method: 'POST', body: formData });
                 if (!response.ok) throw new Error( (await response.json()).error || 'Upload failed');
                 renderTabContent();
             } catch (error) {
@@ -440,7 +437,7 @@
             const newPassword = document.getElementById('new-password').value;
             if (!currentPassword || !newPassword) { alert("All fields are required."); return; }
             try {
-                await fetchData(`/user/change-password/${currentUserId}`, { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+                await fetchData(`/api/user/change-password/${currentUserId}`, { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
                 alert("Password changed successfully!");
                 event.target.reset();
             } catch (e) { /* error is already alerted by fetchData */ }

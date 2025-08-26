@@ -1,9 +1,5 @@
-# api.py (Final Corrected Version)
-# Forcing a change for Vercel deployment
-
 import os
-# CORRECTED: Added 'send_from_directory' to the imports
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import psycopg2
 import psycopg2.extras
@@ -15,14 +11,11 @@ import cloudinary
 import cloudinary.uploader
 import requests
 
-# Load environment variables from a .env file
 load_dotenv()
 
-# CORRECTED: This line now tells Flask where to find index.html
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURATIONS ---
 DATABASE_URL = os.getenv("NEON_DATABASE_URL")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
@@ -33,18 +26,6 @@ cloudinary.config(
   secure = True
 )
 
-# --- ROUTE TO SERVE THE HTML FRONTEND ---
-# This route now correctly serves the index.html from the root folder.
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def serve(path):
-    if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, 'index.html')
-
-
-# --- HELPER FUNCTIONS ---
 def get_db_connection():
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -364,8 +345,3 @@ def manage_note():
         return jsonify({"error": str(e)}), 500
     finally:
         if conn: conn.close()
-
-# --- Main entry point (This should only appear once, at the very end) ---
-# Note: Vercel doesn't use this, but it's essential for local testing.
-if __name__ == '__main__':
-    app.run(debug=True, port=5001)
