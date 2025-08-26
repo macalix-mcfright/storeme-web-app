@@ -4,3 +4,4 @@ __pycache__/
 
 # Ignore the secret environment variables file
 .env
+.vercel

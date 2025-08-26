@@ -24,8 +24,6 @@
 <body class="bg-gray-900 text-white">
 
     <div id="app" class="container mx-auto p-4 max-w-5xl">
-        <!-- All HTML content is the same, only the script part changes -->
-        <!-- Login/Signup View -->
         <div id="auth-view">
             <div class="max-w-md mx-auto mt-20 bg-gray-800 p-8 rounded-lg shadow-lg">
                 <h2 id="auth-title" class="text-2xl font-bold text-center mb-6">Login to StoreMe</h2>
@@ -41,13 +39,13 @@
                     <button id="auth-button" type="submit" class="w-full btn btn-primary">Login</button>
                 </form>
                 <p id="auth-error" class="text-red-400 text-center mt-4 hidden"></p>
-                <div class="text-center mt-6">
+                <div class="flex justify-between items-center mt-6">
                     <a href="#" id="auth-switch-link" class="text-blue-400 hover:underline">Don't have an account? Sign Up</a>
+                    <a href="#" id="help-link" class="text-cyan-400 hover:underline">Need help?</a>
                 </div>
             </div>
         </div>
 
-        <!-- Main App View (Hidden by default) -->
         <div id="main-view" class="hidden">
             <header class="flex justify-between items-center mb-4">
                 <h1 class="text-3xl font-bold">StoreMe</h1>
@@ -63,10 +61,12 @@
         </div>
     </div>
 
-    <!-- Generic Modal -->
     <div id="modal-backdrop" class="modal-backdrop hidden">
         <div id="modal-content" class="modal-content">
-            <h3 id="modal-title" class="text-xl font-bold mb-4"></h3>
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="modal-title" class="text-xl font-bold"></h3>
+                <button onclick="hideModal()" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
             <div id="modal-body"></div>
             <div id="modal-footer" class="mt-6 flex justify-end space-x-3"></div>
         </div>
@@ -74,9 +74,10 @@
 
     <script>
         // --- CONFIGURATION ---
-        const API_BASE_URL = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-            ? 'http://127.0.0.1:5001'
-            : window.location.origin;
+        const isLocal = window.location.protocol === 'file:' || window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+        const API_BASE_URL = isLocal 
+            ? 'http://127.0.0.1:5001' 
+            : 'https://your-production-url.com'; // IMPORTANT: Replace with your actual deployment URL later
 
         // --- DOM ELEMENTS ---
         const authView = document.getElementById('auth-view');
@@ -85,6 +86,7 @@
         const authTitle = document.getElementById('auth-title');
         const authButton = document.getElementById('auth-button');
         const authSwitchLink = document.getElementById('auth-switch-link');
+        const helpLink = document.getElementById('help-link');
         const authError = document.getElementById('auth-error');
         const logoutButton = document.getElementById('logout-button');
         const tabsContainer = document.getElementById('tabs');
@@ -170,15 +172,20 @@
                 authError.classList.remove('hidden');
             }
         }
+        
+        function showHelpModal() {
+            const title = 'Help & Support';
+            const body = `<p class="text-center">If you've forgotten your password or your subscription has expired, please contact the developer with your username.</p><div class="mt-4 text-center"><a href="mailto:samuerumcfear@gmail.com" class="text-blue-400 hover:underline">Email: samuerumcfear@gmail.com</a><br><a href="https://wa.me/639179751591" target="_blank" rel="noopener noreferrer" class="text-green-400 hover:underline">WhatsApp: +639179751591</a></div>`;
+            const footer = `<button class="btn btn-secondary" onclick="hideModal()">Close</button>`;
+            showModal(title, body, footer, 'md');
+        }
 
         // --- TAB & CONTENT RENDERING ---
         function renderSubscriptionBanner() {
             const subType = localStorage.getItem('subscriptionType') || 'trial';
             const expiryDateStr = localStorage.getItem('expiryDate');
-
             let daysLeftText = '';
             let bannerColorClass = '';
-
             if (subType.toLowerCase() === 'lifetime') {
                 daysLeftText = "Lifetime Access";
                 bannerColorClass = "bg-green-500";
@@ -188,7 +195,6 @@
                 today.setHours(0,0,0,0);
                 const diffTime = expiryDate.getTime() - today.getTime();
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
                 if (diffDays < 0) {
                     daysLeftText = "Expired";
                     bannerColorClass = "bg-red-500";
@@ -200,15 +206,11 @@
                 daysLeftText = "No Expiry Date Set";
                 bannerColorClass = "bg-yellow-500";
             }
-            
-            subscriptionBanner.innerHTML = `
-                <span class="font-bold">Subscription: ${subType.charAt(0).toUpperCase() + subType.slice(1)}</span>
-                <span class="px-2 py-1 text-sm rounded-md ${bannerColorClass}">${daysLeftText}</span>
-            `;
+            subscriptionBanner.innerHTML = `<span class="font-bold">Subscription: ${subType.charAt(0).toUpperCase() + subType.slice(1)}</span><span class="px-2 py-1 text-sm rounded-md ${bannerColorClass}">${daysLeftText}</span>`;
         }
         
         function renderTabs() {
-            const tabNames = ['Contacts', 'Accounts', 'Cards', 'Files', 'Settings'];
+            const tabNames = ['Contacts', 'Accounts', 'Cards', 'Files', 'Notes', 'Settings'];
             tabsContainer.innerHTML = '';
             tabNames.forEach(name => {
                 const isActive = name === activeTab;
@@ -231,6 +233,7 @@
                 'Accounts': async () => renderItems('Accounts', await fetchData('/accounts/'), renderAccountCard, showAccountForm),
                 'Cards': async () => renderItems('Cards', await fetchData('/cards/'), renderCardCard, showCardForm),
                 'Files': async () => renderFiles(await fetchData('/files/')),
+                'Notes': async () => renderItems('Notes', await fetchData('/notes/'), renderNoteCard, showNoteForm),
                 'Settings': () => renderSettings(),
             };
             await actions[activeTab]();
@@ -238,7 +241,9 @@
 
         async function fetchData(endpoint, options = {}) {
             try {
-                const response = await fetch(`${API_BASE_URL}${endpoint}${options.method === 'GET' || !options.method ? currentUserId : ''}`, {
+                // Append userId to GET requests automatically
+                const url = (options.method === 'GET' || !options.method) ? `${API_BASE_URL}${endpoint}${currentUserId}` : `${API_BASE_URL}${endpoint}`;
+                const response = await fetch(url, {
                     method: 'GET',
                     headers: { 'Content-Type': 'application/json' },
                     ...options,
@@ -254,13 +259,7 @@
 
         // --- GENERIC ITEM RENDERING ---
         function renderItems(title, items, cardRenderer, addFormRenderer) {
-            let content = `<div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold">${title}</h2>
-                <button class="btn btn-primary gap-2" onclick="${addFormRenderer.name}()">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Add New
-                </button>
-            </div>`;
+            let content = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">${title}</h2><button class="btn btn-primary gap-2" onclick="${addFormRenderer.name}()"> <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add New </button></div>`;
             if (!items || items.length === 0) {
                 content += `<div class="text-center p-8 text-gray-500">No items found.</div>`;
             } else {
@@ -269,106 +268,42 @@
             tabContentContainer.innerHTML = content;
         }
 
-        // --- CONTACTS ---
+        // --- RENDERERS FOR EACH CARD TYPE ---
         function renderContactCard(c) {
             const phones = (c.phone && c.phone.length > 0) ? c.phone.join(' | ') : 'N/A';
-            return `<div class="card mb-4">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <h3 class="text-xl font-bold">${c.name}</h3>
-                        <p class="text-gray-400">📞 ${phones}</p>
-                        <p class="text-gray-400">📧 ${c.email || 'N/A'}</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button class="btn btn-sm btn-secondary" onclick='showContactForm(${JSON.stringify(c)})'>Edit</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteItem('contacts', ${c.id})">Delete</button>
-                    </div>
-                </div>
-                ${c.notes ? `<p class="mt-2 text-sm bg-gray-700 p-2 rounded">Notes: ${c.notes}</p>` : ''}
-            </div>`;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${c.name}</h3><p class="text-gray-400">📞 ${phones}</p><p class="text-gray-400">📧 ${c.email || 'N/A'}</p></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showContactForm(${JSON.stringify(c)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('contacts', ${c.id})">Delete</button></div></div>${c.notes ? `<p class="mt-2 text-sm bg-gray-700 p-2 rounded">Notes: ${c.notes}</p>` : ''}</div>`;
         }
 
-        // --- ACCOUNTS ---
+        function renderNoteCard(n) {
+            const snippet = n.content.length > 100 ? n.content.substring(0, 100) + '...' : n.content;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${n.title}</h3><p class="text-gray-400 mt-2">${snippet.replace(/\n/g, '<br>')}</p></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showNoteForm(${JSON.stringify(n)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('notes', ${n.id})">Delete</button></div></div></div>`;
+        }
+
         function renderAccountCard(a) {
-            return `<div class="card mb-4">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <h3 class="text-xl font-bold">${a.website}</h3>
-                        <p class="text-gray-400">Username: ${a.username}</p>
-                        <div class="flex items-center mt-1">
-                            <input type="password" value="${a.password}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly>
-                            <button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                         <button class="btn btn-sm btn-secondary" onclick='showAccountForm(${JSON.stringify(a)})'>Edit</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteItem('accounts', ${a.id})">Delete</button>
-                    </div>
-                </div>
-            </div>`;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${a.website}</h3><p class="text-gray-400">Username: ${a.username}</p><div class="flex items-center mt-1"><input type="password" value="${a.password}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button></div></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showAccountForm(${JSON.stringify(a)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('accounts', ${a.id})">Delete</button></div></div></div>`;
         }
 
-        // --- CARDS ---
         function renderCardCard(c) {
             const formattedNumber = c.card_number.replace(/(.{4})/g, '$1 ').trim();
-            return `<div class="card mb-4">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <h3 class="text-xl font-bold">${c.card_name}</h3>
-                        <div class="flex items-center mt-1">
-                            <input type="text" value="${formattedNumber}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly>
-                            <button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="copyToClipboard('${c.card_number}')">Copy</button>
-                        </div>
-                        <div class="flex items-center mt-2">
-                            <p class="text-gray-400 mr-4">Expires: ${c.expiry_date}</p>
-                            <p class="text-gray-400 mr-1">CVV:</p>
-                            <input type="password" value="${c.cvv}" class="bg-gray-700 rounded-l-md p-1 font-mono w-16" readonly>
-                            <button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center">
-                        <button class="btn btn-sm btn-danger" onclick="deleteItem('cards', ${c.id})">Delete</button>
-                    </div>
-                </div>
-            </div>`;
+            return `<div class="card mb-4"><div class="flex justify-between items-start"><div><h3 class="text-xl font-bold">${c.card_name}</h3><div class="flex items-center mt-1"><input type="text" value="${formattedNumber}" class="bg-gray-700 rounded-l-md p-1 font-mono" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="copyToClipboard('${c.card_number}')">Copy</button></div><div class="flex items-center mt-2"><p class="text-gray-400 mr-4">Expires: ${c.expiry_date}</p><p class="text-gray-400 mr-1">CVV:</p><input type="password" value="${c.cvv}" class="bg-gray-700 rounded-l-md p-1 font-mono w-16" readonly><button class="btn btn-secondary rounded-l-none rounded-r-md text-xs" onclick="togglePassword(this)">Show</button></div></div><div class="flex items-center gap-2"><button class="btn btn-sm btn-secondary" onclick='showCardForm(${JSON.stringify(c)})'>Edit</button><button class="btn btn-sm btn-danger" onclick="deleteItem('cards', ${c.id})">Delete</button></div></div></div>`;
         }
         
-        // --- FILES ---
+        // --- FILES & SETTINGS RENDERERS ---
         function renderFiles(files) {
-            let content = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Files</h2><input type="file" id="file-upload" class="hidden"><button class="btn btn-primary gap-2" onclick="document.getElementById('file-upload').click()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>Upload File</button></div>`;
+            let content = `<div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Files</h2><input type="file" id="file-upload" class="hidden" onchange="handleFileUpload(event)"><button class="btn btn-primary gap-2" onclick="document.getElementById('file-upload').click()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>Upload File</button></div>`;
             if (!files || files.length === 0) {
                 content += `<div class="text-center p-8 text-gray-500">No files found.</div>`;
             } else {
                 content += files.map(f => {
-                    const isImage = /\.(jpe?g|png|gif|bmp)$/i.test(f.filename);
-                    // DOWNLOAD FIX: Use a button that calls a JavaScript function
-                    return `<div class="card mb-2 flex justify-between items-center">
-                        <p>${f.filename}</p>
-                        <div class="flex items-center gap-2">
-                            ${isImage ? `<button class="btn btn-sm btn-special" onclick="showImagePreview('${f.file_url}')">Preview</button>` : ''}
-                            <button class="btn btn-sm btn-secondary" onclick="downloadFile(${f.id}, '${f.filename}')">Download</button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteItem('files', ${f.id})">Delete</button>
-                        </div>
-                    </div>`
+                    const isImage = /\.(jpe?g|png|gif|bmp|webp)$/i.test(f.filename);
+                    return `<div class="card mb-2 flex justify-between items-center"><p>${f.filename}</p><div class="flex items-center gap-2">${isImage ? `<button class="btn btn-sm btn-special" onclick="showImagePreview('${f.file_url}', '${f.filename}')">Preview</button>` : ''}<button class="btn btn-sm btn-secondary" onclick="downloadFile('${f.file_url}', '${f.filename}')">Download</button><button class="btn btn-sm btn-danger" onclick="deleteItem('files', ${f.id})">Delete</button></div></div>`
                 }).join('');
             }
             tabContentContainer.innerHTML = content;
-            document.getElementById('file-upload').addEventListener('change', handleFileUpload);
         }
 
-        // --- SETTINGS ---
         function renderSettings() {
-            tabContentContainer.innerHTML = `
-                <h2 class="text-2xl font-bold mb-4">Settings</h2>
-                <div class="card max-w-md mx-auto">
-                    <h3 class="text-xl font-bold mb-4">Change Password</h3>
-                    <form id="change-password-form">
-                        <input type="password" id="current-password" placeholder="Current Password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mb-3" required>
-                        <input type="password" id="new-password" placeholder="New Password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mb-3" required>
-                        <button type="submit" class="w-full btn btn-primary">Save New Password</button>
-                    </form>
-                </div>
-            `;
+            tabContentContainer.innerHTML = `<h2 class="text-2xl font-bold mb-4">Settings</h2><div class="card max-w-md mx-auto"><h3 class="text-xl font-bold mb-4">Change Password</h3><form id="change-password-form"><input type="password" id="current-password" placeholder="Current Password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mb-3" required><input type="password" id="new-password" placeholder="New Password" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 mb-3" required><button type="submit" class="w-full btn btn-primary">Save New Password</button></form></div>`;
             document.getElementById('change-password-form').addEventListener('submit', handleChangePassword);
         }
 
@@ -377,11 +312,9 @@
             modal.title.innerHTML = title;
             modal.body.innerHTML = body;
             modal.footer.innerHTML = footer;
-            
             modal.content.classList.remove('max-w-lg', 'max-w-md');
             if (size === 'lg') modal.content.classList.add('max-w-lg');
             if (size === 'md') modal.content.classList.add('max-w-md');
-
             modal.backdrop.classList.remove('hidden');
         }
         function hideModal() { modal.backdrop.classList.add('hidden'); }
@@ -390,87 +323,50 @@
             const isEdit = contact !== null;
             const title = isEdit ? 'Edit Contact' : 'Add New Contact';
             const phones = (isEdit && contact.phone) ? contact.phone : [''];
-            
-            const phoneInputs = phones.map((p, i) => `
-                <div class="flex items-center gap-2" id="phone-row-${i}">
-                    <input type="tel" name="contact-phone" placeholder="Phone" value="${p}" class="w-full bg-gray-700 p-2 rounded">
-                    ${i > 0 ? `<button type="button" class="text-red-400 hover:text-red-300" onclick="removePhoneInput(${i})">&times;</button>` : ''}
-                </div>
-            `).join('');
-
-            const body = `<div class="mx-auto max-w-md">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="hidden" id="contact-id" value="${isEdit ? contact.id : ''}">
-                    <input type="text" id="contact-name" placeholder="Name*" value="${isEdit ? contact.name : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded" required>
-                    
-                    <div id="phone-inputs-container" class="md:col-span-2 space-y-2">${phoneInputs}</div>
-                    <button type="button" class="md:col-span-2 text-blue-400 hover:underline text-sm text-left" onclick="addPhoneInput()">+ Add another phone</button>
-
-                    <input type="email" id="contact-email" placeholder="Email" value="${isEdit ? contact.email || '' : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded">
-                    <input type="text" id="contact-whatsapp" placeholder="WhatsApp" value="${isEdit ? contact.whatsapp || '' : ''}" class="bg-gray-700 p-2 rounded">
-                    <input type="text" id="contact-facebook" placeholder="Facebook" value="${isEdit ? contact.facebook || '' : ''}" class="bg-gray-700 p-2 rounded">
-                    <input type="text" id="contact-instagram" placeholder="Instagram" value="${isEdit ? contact.instagram || '' : ''}" class="bg-gray-700 p-2 rounded">
-                    <input type="text" id="contact-youtube" placeholder="YouTube" value="${isEdit ? contact.youtube || '' : ''}" class="bg-gray-700 p-2 rounded">
-                    <textarea id="contact-notes" placeholder="Notes" class="md:col-span-2 bg-gray-700 p-2 rounded">${isEdit ? contact.notes || '' : ''}</textarea>
-                </div></div>
-            `;
+            const phoneInputs = phones.map((p, i) => `<div class="flex items-center gap-2" id="phone-row-${i}"><input type="tel" name="contact-phone" placeholder="Phone" value="${p}" class="w-full bg-gray-700 p-2 rounded">${i > 0 ? `<button type="button" class="text-red-400 hover:text-red-300 font-bold text-xl" onclick="removePhoneInput(${i})">&times;</button>` : ''}</div>`).join('');
+            const body = `<div class="mx-auto max-w-md"><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="hidden" id="contact-id" value="${isEdit ? contact.id : ''}"><input type="text" id="contact-name" placeholder="Name*" value="${isEdit ? contact.name : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded" required><div id="phone-inputs-container" class="md:col-span-2 space-y-2">${phoneInputs}</div><button type="button" class="md:col-span-2 text-blue-400 hover:underline text-sm text-left" onclick="addPhoneInput()">+ Add another phone</button><input type="email" id="contact-email" placeholder="Email" value="${isEdit ? contact.email || '' : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded"><input type="text" id="contact-whatsapp" placeholder="WhatsApp" value="${isEdit ? contact.whatsapp || '' : ''}" class="bg-gray-700 p-2 rounded"><input type="text" id="contact-facebook" placeholder="Facebook" value="${isEdit ? contact.facebook || '' : ''}" class="bg-gray-700 p-2 rounded"><input type="text" id="contact-instagram" placeholder="Instagram" value="${isEdit ? contact.instagram || '' : ''}" class="bg-gray-700 p-2 rounded"><input type="text" id="contact-youtube" placeholder="YouTube" value="${isEdit ? contact.youtube || '' : ''}" class="bg-gray-700 p-2 rounded"><textarea id="contact-notes" placeholder="Notes" class="md:col-span-2 bg-gray-700 p-2 rounded">${isEdit ? contact.notes || '' : ''}</textarea></div></div>`;
             const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveContact()">Save</button>`;
             showModal(title, body, footer, 'lg');
         }
-
         function addPhoneInput() {
             const container = document.getElementById('phone-inputs-container');
             const index = container.children.length;
             const newRow = document.createElement('div');
             newRow.className = 'flex items-center gap-2';
             newRow.id = `phone-row-${index}`;
-            newRow.innerHTML = `
-                <input type="tel" name="contact-phone" placeholder="Phone" class="w-full bg-gray-700 p-2 rounded">
-                <button type="button" class="text-red-400 hover:text-red-300 font-bold text-xl" onclick="removePhoneInput(${index})">&times;</button>
-            `;
+            newRow.innerHTML = `<input type="tel" name="contact-phone" placeholder="Phone" class="w-full bg-gray-700 p-2 rounded"><button type="button" class="text-red-400 hover:text-red-300 font-bold text-xl" onclick="removePhoneInput(${index})">&times;</button>`;
             container.appendChild(newRow);
         }
-
-        function removePhoneInput(index) {
-            document.getElementById(`phone-row-${index}`).remove();
-        }
+        function removePhoneInput(index) { document.getElementById(`phone-row-${index}`).remove(); }
 
         function showAccountForm(account = null) {
             const isEdit = account !== null;
             const title = isEdit ? 'Edit Account' : 'Add New Account';
-            const body = `
-                <input type="hidden" id="account-id" value="${isEdit ? account.id : ''}">
-                <input type="text" id="account-website" placeholder="Website/App" value="${isEdit ? account.website : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required>
-                <input type="text" id="account-username" placeholder="Username" value="${isEdit ? account.username : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required>
-                <input type="text" id="account-password" placeholder="Password" value="${isEdit ? account.password : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required>
-            `;
+            const body = `<input type="hidden" id="account-id" value="${isEdit ? account.id : ''}"><input type="text" id="account-website" placeholder="Website/App" value="${isEdit ? account.website : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required><input type="text" id="account-username" placeholder="Username" value="${isEdit ? account.username : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required><input type="text" id="account-password" placeholder="Password" value="${isEdit ? account.password : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required>`;
             const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveAccount()">Save</button>`;
             showModal(title, body, footer, 'md');
         }
         
-        function showCardForm() {
-            const title = 'Add New Card';
-            const body = `<div class="mx-auto max-w-md">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" id="card-name" placeholder="Card Name (e.g., My Visa)" class="md:col-span-2 bg-gray-700 p-2 rounded" required>
-                    <input type="text" id="card-number" placeholder="Card Number" class="md:col-span-2 bg-gray-700 p-2 rounded" required>
-                    <input type="text" id="card-expiry" placeholder="Expiry (MM/YY)" class="bg-gray-700 p-2 rounded" required>
-                    <input type="text" id="card-cvv" placeholder="CVV" class="bg-gray-700 p-2 rounded" required>
-                </div></div>
-            `;
-            const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveCard()">Save</button>`;
+        function showCardForm(card = null) {
+            const isEdit = card !== null;
+            const title = isEdit ? 'Edit Card' : 'Add New Card';
+            const body = `<div class="mx-auto max-w-md"><div class="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="hidden" id="card-id" value="${isEdit ? card.id : ''}"><input type="text" id="card-name" placeholder="Card Name (e.g., My Visa)" value="${isEdit ? card.card_name : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded" required><input type="text" id="card-number" placeholder="Card Number" value="${isEdit ? card.card_number : ''}" class="md:col-span-2 bg-gray-700 p-2 rounded" required><input type="text" id="card-expiry" placeholder="Expiry (MM/YY)" value="${isEdit ? card.expiry_date : ''}" class="bg-gray-700 p-2 rounded" required><input type="text" id="card-cvv" placeholder="CVV" value="${isEdit ? card.cvv : ''}" class="bg-gray-700 p-2 rounded" required></div></div>`;
+            const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveCard()">Save Card</button>`;
             showModal(title, body, footer, 'lg');
         }
-        
+
+        function showNoteForm(note = null) {
+            const isEdit = note !== null;
+            const title = isEdit ? 'Edit Note' : 'Add New Note';
+            const body = `<input type="hidden" id="note-id" value="${isEdit ? note.id : ''}"><input type="text" id="note-title" placeholder="Note Title" value="${isEdit ? note.title : ''}" class="w-full bg-gray-700 p-2 rounded mb-2" required><textarea id="note-content" placeholder="Your notes..." class="w-full bg-gray-700 p-2 rounded h-64">${isEdit ? note.content : ''}</textarea>`;
+            const footer = `<button class="btn btn-secondary" onclick="hideModal()">Cancel</button><button class="btn btn-primary" onclick="saveNote()">Save Note</button>`;
+            showModal(title, body, footer, 'md');
+        }
+
         function showImagePreview(fileUrl, filename) {
-            const title = `
-                <div class="flex justify-between items-center">
-                    <span>${filename}</span>
-                    <button onclick="hideModal()" class="text-gray-400 hover:text-white text-2xl leading-none p-1">&times;</button>
-                </div>
-            `;
+            const title = `<span>${filename}</span>`;
             const body = `<img src="${fileUrl}" alt="${filename}" class="max-w-full max-h-[70vh] mx-auto">`;
-            const footer = ``; // No footer needed
+            const footer = ``;
             showModal(title, body, footer, 'lg');
         }
 
@@ -480,19 +376,7 @@
             const isEdit = id !== '';
             const phoneInputs = document.querySelectorAll('input[name="contact-phone"]');
             const phones = Array.from(phoneInputs).map(input => input.value).filter(p => p);
-
-            const contact = {
-                id: isEdit ? parseInt(id) : null,
-                userId: currentUserId,
-                name: document.getElementById('contact-name').value, 
-                phones: phones,
-                email: document.getElementById('contact-email').value, 
-                notes: document.getElementById('contact-notes').value,
-                whatsapp: document.getElementById('contact-whatsapp').value, 
-                facebook: document.getElementById('contact-facebook').value,
-                instagram: document.getElementById('contact-instagram').value, 
-                youtube: document.getElementById('contact-youtube').value,
-            };
+            const contact = { id: isEdit ? parseInt(id) : null, userId: currentUserId, name: document.getElementById('contact-name').value, phones: phones, email: document.getElementById('contact-email').value, notes: document.getElementById('contact-notes').value, whatsapp: document.getElementById('contact-whatsapp').value, facebook: document.getElementById('contact-facebook').value, instagram: document.getElementById('contact-instagram').value, youtube: document.getElementById('contact-youtube').value };
             if (!contact.name) { alert("Name is required."); return; }
             await fetchData('/contacts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(contact) });
             hideModal();
@@ -502,13 +386,7 @@
         async function saveAccount() {
             const id = document.getElementById('account-id').value;
             const isEdit = id !== '';
-            const account = {
-                id: isEdit ? parseInt(id) : null,
-                userId: currentUserId,
-                website: document.getElementById('account-website').value,
-                username: document.getElementById('account-username').value,
-                password: document.getElementById('account-password').value,
-            };
+            const account = { id: isEdit ? parseInt(id) : null, userId: currentUserId, website: document.getElementById('account-website').value, username: document.getElementById('account-username').value, password: document.getElementById('account-password').value };
             if (!account.website || !account.username || !account.password) { alert("All fields are required."); return; }
             await fetchData('/accounts', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(account) });
             hideModal();
@@ -516,15 +394,21 @@
         }
         
         async function saveCard() {
-            const card = {
-                userId: currentUserId,
-                card_name: document.getElementById('card-name').value,
-                card_number: document.getElementById('card-number').value,
-                expiry_date: document.getElementById('card-expiry').value,
-                cvv: document.getElementById('card-cvv').value,
-            };
+            const id = document.getElementById('card-id').value;
+            const isEdit = id !== '';
+            const card = { id: isEdit ? parseInt(id) : null, userId: currentUserId, card_name: document.getElementById('card-name').value, card_number: document.getElementById('card-number').value, expiry_date: document.getElementById('card-expiry').value, cvv: document.getElementById('card-cvv').value };
             if (!card.card_name || !card.card_number || !card.expiry_date || !card.cvv) { alert("All fields are required."); return; }
-            await fetchData('/cards', { method: 'POST', body: JSON.stringify(card) });
+            await fetchData('/cards', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(card) });
+            hideModal();
+            renderTabContent();
+        }
+
+        async function saveNote() {
+            const id = document.getElementById('note-id').value;
+            const isEdit = id !== '';
+            const note = { id: isEdit ? parseInt(id) : null, userId: currentUserId, title: document.getElementById('note-title').value, content: document.getElementById('note-content').value };
+            if (!note.title) { alert("Title is required."); return; }
+            await fetchData('/notes', { method: isEdit ? 'PUT' : 'POST', body: JSON.stringify(note) });
             hideModal();
             renderTabContent();
         }
@@ -555,9 +439,11 @@
             const currentPassword = document.getElementById('current-password').value;
             const newPassword = document.getElementById('new-password').value;
             if (!currentPassword || !newPassword) { alert("All fields are required."); return; }
-            await fetchData(`/user/change-password/${currentUserId}`, { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
-            alert("Password changed successfully!");
-            event.target.reset();
+            try {
+                await fetchData(`/user/change-password/${currentUserId}`, { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+                alert("Password changed successfully!");
+                event.target.reset();
+            } catch (e) { /* error is already alerted by fetchData */ }
         }
 
         // --- UI HELPERS ---
@@ -571,14 +457,11 @@
                 button.textContent = 'Show';
             }
         }
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!'));
-        }
+        function copyToClipboard(text) { navigator.clipboard.writeText(text).then(() => alert('Copied to clipboard!')); }
 
-        // NEW DOWNLOAD FUNCTION
-        async function downloadFile(fileId, filename) {
+        async function downloadFile(fileUrl, filename) {
             try {
-                const response = await fetch(`${API_BASE_URL}/files/download/${fileId}`);
+                const response = await fetch(fileUrl);
                 if (!response.ok) throw new Error('Download failed');
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -600,6 +483,7 @@
         authForm.addEventListener('submit', handleAuthSubmit);
         logoutButton.addEventListener('click', showAuthView);
         modal.backdrop.addEventListener('click', (e) => { if (e.target === modal.backdrop) hideModal(); });
+        helpLink.addEventListener('click', showHelpModal);
 
         // --- INITIALIZATION ---
         checkLoginState();
