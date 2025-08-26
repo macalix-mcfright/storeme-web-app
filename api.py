@@ -34,6 +34,11 @@ def get_db_connection():
         print(f"Database connection error: {e}")
         return None
 
+# ADD THESE FOUR LINES:
+@app.route('/api/test')
+def api_test():
+    return jsonify({"message": "The API is working!"})
+
 # --- AUTHENTICATION API ---
 @app.route('/api/signup', methods=['POST'])
 def signup():
